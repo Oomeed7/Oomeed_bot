@@ -41,7 +41,7 @@ async def handle_photo(message: Message):
 
     caption = message.caption or ""
 
-    # 📥 Скачать фото из Telegram
+    # 📥 Скачать фото
     photo = message.photo[-1]
     file = await bot.get_file(photo.file_id)
     file_path = file.file_path
@@ -50,15 +50,16 @@ async def handle_photo(message: Message):
     image_bytes = requests.get(file_url).content
     image_base64 = base64.b64encode(image_bytes).decode()
 
-    # 🧠 Анализ фото + текста
+    # 🧠 AI анализ
     response = client.chat.completions.create(
         model="gpt-4.1-mini",
         messages=[
             {
                 "role": "system",
                 "content": (
-                    "Ты эксперт по питанию. Определи блюдо на фото и оцени "
-                    "калорийность одной порции. Ответь ТОЛЬКО числом калорий."
+                    "Ты эксперт по питанию. Определи блюдо на фото, "
+                    "разбей на ингредиенты и оцени калорийность каждого. "
+                    "В конце укажи общую калорийность."
                 )
             },
             {
@@ -76,7 +77,12 @@ async def handle_photo(message: Message):
         ],
     )
 
-    kcal = int(response.choices[0].message.content.strip())
+    result = response.choices[0].message.content
+
+    # 🧮 Попробуем извлечь итоговые ккал
+    import re
+    numbers = re.findall(r"\d+", result)
+    kcal = int(numbers[-1]) if numbers else 0
 
     today = str(date.today())
 
@@ -94,7 +100,7 @@ async def handle_photo(message: Message):
     total = cursor.fetchone()[0] or 0
 
     await message.answer(
-        f"🔥 Приём пищи: {kcal} ккал\n"
+        f"{result}\n\n"
         f"📊 Сегодня: {total} ккал"
     )
 
