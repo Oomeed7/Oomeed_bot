@@ -1,6 +1,8 @@
 import sqlite3
 import os
-from aiogram import Bot, Dispatcher
+import base64
+import requests
+from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message
 from aiogram.filters import Command
 import asyncio
@@ -31,27 +33,46 @@ conn.commit()
 # ===== /start =====
 @dp.message(Command("start"))
 async def start(message: Message):
-    await message.answer(
-        "📸 Отправь фото еды с описанием"
-    )
+    await message.answer("📸 Отправь фото еды (можно с описанием)")
 
-# ===== Фото =====
-@dp.message(lambda m: m.photo)
+# ===== Фото + AI анализ =====
+@dp.message(F.photo)
 async def handle_photo(message: Message):
 
-    if not message.caption:
-        await message.answer("❗️ Добавь описание еды")
-        return
+    caption = message.caption or ""
 
-    text = message.caption
+    # 📥 Скачать фото из Telegram
+    photo = message.photo[-1]
+    file = await bot.get_file(photo.file_id)
+    file_path = file.file_path
+    file_url = f"https://api.telegram.org/file/bot{BOT_TOKEN}/{file_path}"
 
+    image_bytes = requests.get(file_url).content
+    image_base64 = base64.b64encode(image_bytes).decode()
+
+    # 🧠 Анализ фото + текста
     response = client.chat.completions.create(
-        model="gpt-5.2",
+        model="gpt-4.1-mini",
         messages=[
             {
+                "role": "system",
+                "content": (
+                    "Ты эксперт по питанию. Определи блюдо на фото и оцени "
+                    "калорийность одной порции. Ответь ТОЛЬКО числом калорий."
+                )
+            },
+            {
                 "role": "user",
-                "content": f"Посчитай калории: {text}. Ответь только числом."
-            }
+                "content": [
+                    {"type": "text", "text": f"Комментарий пользователя: {caption}"},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_base64}"
+                        },
+                    },
+                ],
+            },
         ],
     )
 
@@ -96,5 +117,5 @@ async def today(message: Message):
 async def main():
     await dp.start_polling(bot)
 
-if __name__ == "__main__":
+if name == "__main__":
     asyncio.run(main())
